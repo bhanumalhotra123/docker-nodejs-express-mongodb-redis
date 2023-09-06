@@ -1,0 +1,3219 @@
+
+Workflow for developing node.js and express app within a docker container.
+
+
+JavaScript is primarily used in web browsers to add interactivity to websites, like creating pop-up windows, animations, and buttons that change when you click on them.
+Node.js lets developers use JavaScript not just in web browsers, but also on servers (like powerful computers that manage websites behind the scenes).
+Express is like a set of instructions that tells your Node.js-powered server how to handle different parts of a website – like what to show when you open a page, how to save your data, and what to do when you submit a form.
+--------------------------------------------------------------------------
+
+Setting up a quick and simple express app 
+
+Created a project directory(NODEDOCKER)
+
+1. sudo apt update
+sudo apt install nodejs npm
+
+
+----------------------------------------------------
+2. npm init 
+(npm init is a command used to initialize a new Node.js project and create a package.json file. 
+The package.json file is a crucial part of Node.js projects as it contains metadata about the project and its dependencies. )
+
+3.npm install express  (this will install express and node_modules folder which will have dependencies )
+
+The command npm install express is used to install the "express" package from the Node Package Manager (npm) registry. 
+Express is a popular web application framework for Node.js that simplifies the process of building web applications and APIs
+ 
+The node_modules folder is a directory commonly found in projects that use Node.js for server-side or command-line applications. 
+It's typically located at the root of your project and contains all the third-party libraries and dependencies your project relies on. 
+These dependencies are defined in a file called package.json, which is also located in the root of your project.
+
+------------------------------------------------------------
+4. index.js
+
+// Import the Express library
+const express = require("express");
+
+// Create an instance of the Express application
+const app = express();
+
+// Define a route for the root URL ("/") using the HTTP GET method
+
+app.get("/", (req, res) => {
+    // Send an HTML response to the client when this route is accessed
+    res.send("<h2>Hi Interviewer, hope you are doing good</h2>");
+});
+
+// Define the port on which the server will listen for incoming requests
+
+const port = process.env.PORT || 3000;
+
+// Start the server and listen on the specified port
+app.listen(port, () => console.log(`Listening on port ${port}`));
+
+
+ Save it(also check any other application is not listening on the mentioned port)
+
+
+-----------------------------------------------------------
+5. node index.js
+
+The command "node index.js" runs the JavaScript file "index.js" using the Node.js runtime.
+
+localhost:3000
+
+If you see the 'Hi Interviewer, hope you are doing good' it means app is running.
+
+
+-------------------------------------------------------------
+6. Integrating our express app into a docker container
+
+Docker should be installed on the machine
+
+Let us start setting up our docker container
+
+https://hub.docker.com/_/node/ ----------------> look for docker image you can use as base in your own custom image
+
+https://docs.docker.com/engine/install/
+
+vi Dockerfile
+
+FROM node:15        --------> pick according to needs
+WORKDIR /app        --------> anytime you run a command it runs in this directory
+COPY package.json . ------> why copy this first? Layering, If only source code is changed and not package.json. Copying package.json first makes sense as we don't need to download dependencies again, we can get them from cache.
+RUN npm install     --------> install the dependencies mentioned in package.json
+COPY . ./           ---------> copy every single directory,file from local to the container(won't be copying package.json again, so no reinstallation of dependencies)
+EXPOSE 3000         -------> just for documentation, we use -p ( port on which you connect to your server ):(port of docker container)
+CMD ["node", "index.js"] --------> The command "node index.js" runs the JavaScript file "index.js" using the Node.js runtime.(runs once container is up)
+
+
+every layer after the layer which have some change is built again.
+
+
+---------------------------------------------------------------
+7. Basic docker commands: building the image, running the container, checking the running containers, deleting the containers
+
+docker build -t node-app-image .          (here dot is the context) (-t is used to give a name to the image)
+
+docker run -it -d -p 3000:3000 --name node-app node-app-image (-d is for detached mode) by default for security outside things cannot talk to docker container though docker container can talk to outside machines or internet.
+(after running this check localhost:3000 your app should be running now)
+
+docker ps (to check the list of running containers)
+
+docker rm node-app -f (for deleting the container)
+
+docker exec -it node-app bash (to get inside the container)
+----------------------------------------------------
+
+
+8. Not all the files should be copied to the container
+------------------------------------------------------
+we see files like node_modules and Dockerfile which are not needed to be copied, so just copy them in .dockerignorefile
+                                                                                                      ------------------
+
+node_modules
+.dockerignore
+.git
+.gitignore
+Dockerfile 
+
+
+though node_modules folder will be there as we npm install when dockerfile is built into an image
+
+-----------------------------------------------------
+
+
+
+9. Stale version of code runs even if you change anything in code.
+-------------------------------------------------------------
+
+We need to build the image again so that it catches the changes in source code. 
+But it is hectic to do it everytime for dev environment, though it is right thing to do for production environment.
+
+What to do?
+
+BIND MOUNT !!! It syncs your docker container working directory with your project folder in your local system.
+----------
+
+docker run -v  $(pwd):/app -p 3000:3000 -d --name node-app node-app-image
+ 
+for windows command shell --> %cd%:/app
+for windows powershell    --> ${PWD}
+for linux systems         --> $(pwd)
+
+or you can also give entire path
+--------------------------------------------------------------
+
+
+10.NODEMON
+
+Bind volume syncs, if you check inside the container workdirectory after making any change. But still it doesn't show up on localhost:3000.
+
+
+just using bind mount isn't working, we need to restart node process everytime using NODEMON
+
+When you use a tool like nodemon in a Node.js project, it monitors your project's source code files for changes.
+When it detects a change, it automatically restarts your Node.js application.
+
+
+Nodemon
+https://www.npmjs.com/package/nodemon
+
+npm install --save-dev nodemon  (we are installing it in our local system)
+
+
+Update in package.json
+
+  "scripts": {
+    "start": "node index.js",            -----------------> for normal
+    "dev": "nodemon -L index.js"         -----------------> for dev mode
+  },
+
+
+When you use the -L flag with the nodemon command, it tells nodemon to use the legacy watch mode for monitoring file changes. 
+This mode might be useful in certain situations where the default file watching mechanism is not working correctly on your system or for certain file systems.
+
+
+
+Change in Dockerfile
+CMD ["npm", "run", "dev"]  to run the script for dev environment
+
+now create image and run the container again with bind mount.
+takes time as package.json is being updated
+
+This time makes changes in the source code will affect the localhost:3000
+
+Make any changes to your source code and check localhost:3000. It will work this time!!
+
+docker ps -a to check the all the containers not just the running ones.
+
+-------------------------------------------------------------------------------------
+
+11. ANONYMOUS Volumes
+
+Delete node_modules file in local directory as you are no more deploying the application on local machine, so you don't need dependencies to be downloaded  and build the container again.
+
+Guess what? Your application breaks! 
+
+Why?  --> Check logs
+
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker logs node-app
+
+> nodedocker@1.0.0 dev
+> nodemon -L index.js
+
+sh: 1: nodemon: not found      ----------------------> !!focus here!!
+npm notice
+npm notice New major version of npm available! 7.7.6 -> 9.8.1
+npm notice Change log: <https://github.com/npm/cli/releases/tag/v9.8.1>
+npm notice Run `npm install -g npm@9.8.1` to update!
+npm notice
+PS C:\Users\LENOVO\Desktop\nodedocker> 
+
+Why nodemon was not installed?
+
+We sync /app folder with the local, so when we delete the node_modules it deletes it in the container as well which had the downloaded dependencies which you had mentioned in package.json file.
+
+we want to preserve node_modules folder and don't want bind mount to rule over it.
+
+
+Solution: PS C:\Users\LENOVO\Desktop\nodedocker> docker run -d -v  ${pwd}:/app -v /app/node_modules -p 3000:3000 --name node-app node-app-image
+                                                                               --------------------
+
+Using ANONYMOUS Volumes(mentioning /app/node_modules gives the node_modules for specifically will make bind mound not to over-rule it.)
+
+-----------------------------------------------------------------------------------------------
+
+
+
+12. Do we really need to use COPY . ./ in our docker file if we are using bind mount? Answer is Yes
+
+Bind mount is for development purpose, we don't use that for production as we don't want source code changes in local to directly impact the prod.
+
+-----------------------------------------------------------------------------------------------------------------------------
+
+
+
+13.  READ ONLY BIND MOUNT(solving a security issue)
+
+
+Now one more problem with bind mount is if we change anything inside the container it reflects those changes in the local as well
+
+Solution: We will make it read only bind mount            
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker run -d -v  ${PWD}:/app:ro -v /app/node_modules -p 3000:3000 --name node-app node-app-image
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker exec -it node-app bash
+root@1fa92df2c02d:/app# ls
+Dockerfile  index.js  node_modules  package-lock.json  package.json
+root@1fa92df2c02d:/app# touch file1
+touch: cannot touch 'file1': Read-only file system
+
+---------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+14. Making use of ENVIRONMENT VARIABLES in docker container
+
+Say we want to change the port on which your application is running it is set to 3000:
+
+const port = process.env.PORT || 3000;
+
+now setting it as a env variable in our dockerfile
+
+FROM node:15
+WORKDIR /app
+COPY package.json .
+RUN npm install
+COPY . ./
+ENV PORT 3000 --> Default value
+EXPOSE $PORT --> Just for the purpose of documentation
+CMD ["npm", "run", "dev"]
+
+
+but if we want to change it at the time of deployment?
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker run -d -v  ${pwd}:/app:ro -v /app/node_modules --env PORT=4000 -p 3000:4000 --name node-app node-app-image
+                                                                                             ----------------
+b5e45107f819c9664cd825fff6709a72709f9a193b3a1495d3a6e43424123f79
+
+
+Here even if default port is set to 3000, we changed it to 4000, remember to change the exposed port on container to 4000 in command.
+ 
+
+To check the if environment variable is set right or not:  printenv
+                                                          -----------
+
+root@b5e45107f819:/app# printenv
+YARN_VERSION=1.22.5  
+HOSTNAME=b5e45107f819
+PWD=/app
+HOME=/root
+PORT=4000
+NODE_VERSION=15.14.0
+TERM=xterm
+SHLVL=1
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+_=/usr/bin/printenv
+root@b5e45107f819:/app#
+
+
+It overwrite the port variable which was set in our Dockerfile
+
+
+------------------------------------------------------------------------------------------------------------------------------------
+
+
+15. What if there are alot of environment variables?
+
+Create a file named .env save PORT=4000 in it
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker run -d -v  ${pwd}:/app:ro -v /app/node_modules --env-file ./.env -p 3000:4000 --name node-app node-app-image
+
+
+-------------------------------------------------------------------------------------------------------------------------------------
+
+
+16. Volumes are piling up
+
+Creating and deleting containers cause this: Everytime you DELETE THE CONTAINER VOLUME PERSISTS(that is what the volumes are for . say you have mysql or postgess data)
+
+PS C:\Users\LENOVO\Desktop\nodedocker>  docker volume ls 
+DRIVER    VOLUME NAME
+local     2d266fe74b09adef7b57025b85f9018da3006812e117cfb1764cd104870736e7
+local     047e99a55f2821778565e16c1b77f6633448e75adda0533435c4993aecee9cd2
+local     d5aecb331a590d7613633bf24940f31088becc6ebed588775458a26c07c88e05
+local     f3ec3401add513a19eef88967b2334578272cefd374a916ccea0a332e2a56f2f
+local     f11d3c212abba983245c6eb84462e9bf6fc2c9fb0880f0c950ad755670be6a76
+
+but sometimes you don't need them.
+
+you can mannualy delete them
+
+docker volume prune (deletes the volumes which are not attached to any containers)
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker volume prune
+WARNING! This will remove anonymous local volumes not used by at least one container.
+Are you sure you want to continue? [y/N] y
+Deleted Volumes:
+f3ec3401add513a19eef88967b2334578272cefd374a916ccea0a332e2a56f2f
+047e99a55f2821778565e16c1b77f6633448e75adda0533435c4993aecee9cd2
+d5aecb331a590d7613633bf24940f31088becc6ebed588775458a26c07c88e05
+2d266fe74b09adef7b57025b85f9018da3006812e117cfb1764cd104870736e7
+
+Total reclaimed space: 11.73MB
+PS C:\Users\LENOVO\Desktop\nodedocker>  docker volume ls  
+DRIVER    VOLUME NAME
+local     f11d3c212abba983245c6eb84462e9bf6fc2c9fb0880f0c950ad755670be6a76
+PS C:\Users\LENOVO\Desktop\nodedocker>
+
+or you can also use -v flag while deleting the docker --> docker rm node-app -fv
+
+---------------------------------------------------------------------------------
+
+
+
+
+17. DOCKER-COMPOSE FOR HANDLING MULTIPLE CONTAINERS AND REDUCING THE HASSLE OF LONG DOCKER COMMANDS
+
+
+ Command is too long: PS C:\Users\LENOVO\Desktop\nodedocker> docker run -d -v  ${pwd}:/app:ro -v /app/node_modules --env-file ./.env -p 3000:4000 --name node-app node-app-image
+More number of containers, running command becomes cumbersome
+
+In a full blown application  we might have more containers, for example for database, elastic-search, redis etc.....
+
+NOT HAPPENING > LET US AUTOMATE THIS
+
+doesn't matter the number of containers 
+
+
+https://docs.docker.com/compose/release-notes/
+
+vi docker-compose.yml
+
+Need a specific function, pick version according to that
+
+
+version: "3"
+services: 
+  node-app:              -----------------> you can give any name to your container here
+    build: .           
+    ports:
+      - "3000:3000"
+    volumes:
+      -  ./:/app
+      - /app/node_modules
+    environment:
+      - PORT = 3000
+    #env_file:
+    #   - ./.env
+
+
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker compose up -d
+[+] Running 1/1
+ ✔ Container nodedocker-node-app-1  Started
+                                               0.6s
+PS C:\Users\LENOVO\Desktop\nodedocker> docker image ls                                                                                                                      0.6s 
+REPOSITORY            TAG       IMAGE ID       CREATED         SIZE
+nodedocker-node-app   latest    c9b9996bc1a3   2 minutes ago   945MB    --------> check the name It takes the project directory name + _ + service name
+<none>                <none>    2b1be00a2079   3 hours ago     945MB
+node-app-image        latest    2472bcbdae29   3 hours ago     945MB
+<none>                <none>    456a4b11cdc1   3 hours ago     945MB
+<none>                <none>    a5b1b2be85fa   3 hours ago     945MB
+
+
+
+PS C:\Users\LENOVO\Desktop\nodedocker>  docker compose up -d                            YOU CAN HANDLE HUNDRED OF CONTAINERS THIS WAY
+[+] Running 1/0
+ ✔ Container nodedocker-node-app-1  Running                                                                             0.0s 
+PS C:\Users\LENOVO\Desktop\nodedocker>  docker compose down -v
+[+] Running 2/2
+ ✔ Container nodedocker-node-app-1  Removed                                                                             1.0s 
+ ✔ Network nodedocker_default       Removed      
+
+
+18.docker compose looks for an image with the name nodedocker-node-app while starting up and it doesn't build it again if one is already there
+
+Docker compose is dumb here!!
+
+We gotta tell it 
+
+How?
+
+docker compose up -v --build (it rebuilds the image) [for production environment where we do not have nodemon setup]
+
+
+
+
+19. DOCKER COMPOSE FOR PRODUCTION
+
+This is good for development environment: npm run dev
+
+
+Most of the things in different environments are same, we just need to change the command in general.
+
+Let us seperate docker-compose files for prod and dev environment and also keep us a file for whatever is common between the two files.
+
+1. docker-compose.yml  ---> acts as base
+2. docker-compose.dev.yml
+3. docker-compose.prod.yml
+
+
+dockerfile
+-----------
+
+FROM node:15
+WORKDIR /app
+COPY package.json .
+RUN npm install
+COPY . ./
+ENV PORT 3000 --> Default value
+EXPOSE $PORT --> Just for the purpose of documentation
+CMD ["node", "index.js"]     ----> Anything written here will be over writen by the docker-compose files
+
+
+docker-compose.yml     ------------------------> things which are common in  dev and prod envs
+------------------
+
+version: "3"
+services:
+  node-app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+
+
+docker-compose.prod.yml       
+-----------------------
+version: "3"
+services: 
+  node-app:
+    environment:
+      - NODE_ENV=production
+    command: node index.js
+
+-----------------------
+docker-compose.dev.yml
+
+version: "3"
+services: 
+  node-app:
+    volumes:
+      -  ./:/app
+      - /app/node_modules           -------------------> we need bind mount and anonymous volume for dev env only
+    environment:
+      - NODE_ENV=development
+    command: npm run dev            ---------------------> over writing what is given in base compose file as we need the command which inclueds nodemon dependency for dev environment
+
+-------------------------
+
+Note the differences in commands 
+--------------------------------
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d    -------------> passing two files at a time(1. base compose file, 2. the env compose file)
+[+] Running 1/1
+ ✔ Container nodedocker-node-app-1  Started               
+
+                                                                                                                     0.5s 
+PS C:\Users\LENOVO\Desktop\nodedocker> docker-compose -f docker-compose.yml -f docker-compose.dev.yml down -v
+[+] Running 2/2
+ ✔ Container nodedocker-node-app-1  Removed                                                                                                                                    1.0s 
+ ✔ Network nodedocker_default       Removed                                                                                                                                    0.3s 
+PS C:\Users\LENOVO\Desktop\nodedocker> docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+[+] Running 2/2
+ ✔ Network nodedocker_default       Created                                                                                                                                    0.0s 
+ ✔ Container nodedocker-node-app-1  Started  
+
+
+Now if you want the changes in prod to be reflected to the users, you will run the PROD command with --build flag <------------- remember this for PROD
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+[+] Building 2.8s (11/11) FINISHED                                                                                                                                   docker:default
+ => [node-app internal] load build definition from Dockerfile                                                                                                                  0.0s
+ => => transferring dockerfile: 171B      
+
+
+--------------------------------------------------------------------------------------------------------
+
+
+20. Now these docker-compose files shouldn't be there inside the docker container .dockerignore  <----------- more files added to it
+
+add docker-compose* to the .dockerignore file.
+
+
+
+--------------------------------------------------------------------------------------------------------
+21.Now there is a dependency mentioned in package.json: NODEMON not for PRODUCTION
+
+
+We don't want it in PRODUCTION
+
+In your package.json:
+
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+
+We need to make some changes to our Dockerfile:
+
+
+ 
+Dockerfile
+----------
+FROM node:15
+WORKDIR /app
+COPY package.json .
+RUN npm install
+
+ARG NODE_ENV                                              --------------> you have to mention this in your docker compose files
+RUN if [ "$NODE_ENV" = "development" ]; \                 --------------> this will only build the nodemon dependency and all others 
+        then npm install; \
+        else npm install --only=production; \             --------------> this will not include dependencies that are mentioned as devDependencies in your package.json file
+        fi
+
+COPY . ./
+ENV PORT 3000
+EXPOSE $PORT
+CMD ["node", "index.js"]
+
+
+
+
+docker-compose.prod.yml
+----------------------------------------------------
+version: "3"
+services: 
+  node-app:
+    build:
+      context: .                                     -----------------------> you can add the context
+      args:                                          -----------------------> pass in the arguments which dockerfile is using
+        NODE_ENV: production
+    environment:
+      - NODE_ENV=production
+    command: node index.js 
+
+docker-compose.dev.yml
+--------------------------------------------------
+
+version: "3"
+services: 
+  node-app:
+    build:
+      context: .                                    -----------------------> you can add the context
+      args: 
+        NODE_ENV: development                       -----------------------> pass in the arguments which dockerfile is using
+    volumes:
+      -  ./:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
+
+-----------------------------------------------------------
+
+
+for better understanding:
+
+When you run npm install --only=production, npm installs only the dependencies that are marked as "dependencies" in your package.json file. These are the dependencies that your application needs to run in a production environment.
+
+In a standard Node.js project, your package.json file might look something like this:
+
+
+{
+  "dependencies": {
+    "express": "^4.17.1",
+    "mongoose": "^6.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.12",
+    "eslint": "^7.32.0"
+  }
+}
+In this example, the "dependencies" section includes the libraries required for the application to function. 
+The "devDependencies" section includes tools or libraries used during development, but not needed for the actual production deployment.
+
+When you run npm install --only=production, npm only installs the dependencies listed under "dependencies" (e.g., express and mongoose), ensuring that only the essentials required for the application to run are installed. 
+Any development-related dependencies listed under "devDependencies" (e.g., nodemon and eslint) are not installed in this case.
+
+
+
+
+---------------------------------------------------------------
+
+
+up the docker compose for dev environment
+
+Try changing the source code
+
+You will notice it takes effect which means nodemon is downloaded.
+
+----------------------------------------------------------------
+
+now try the same for prod
+
+you can also check going inside the check inside node_modules folder if it has downloaded nodemon or not
+
+
+-----------------------------------------------------------------------
+
+22: MORE THAN 1 CONTAINER MONGODB AS A DATABASE
+----------------------------------------------
+
+
+
+https://hub.docker.com/_/mongo
+
+check how to configure on this
+
+
+
+
+docker-compose.dev.yaml
+-----------------------
+
+version: "3"
+services: 
+  node-app:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      -  ./:/app
+      - /app/node_modules
+    environment:
+      - PORT = 3000
+    #env_file:
+    #   - ./.env
+
+  mongo:                                                <--------------------------------- add the config for mongo (we are just using preconfigured image and not custom for mongodb, we used custom for node-app that is why we had to build it.)
+    image: mongo
+    restart: always
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=bhanumalhotra
+      - MONGO_INITDB_ROOT_PASSWORD=mypassword
+
+
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml -d up
+
+-------------------------------------------------------------------------
+
+
+
+23. Logging in mongodb
+----------------------
+
+
+ docker exec -it nodedocker-mongo-1 bash
+
+
+root@292f9670f307:/# mongosh -u "bhanumalhotra" -p "mypassword"
+
+Current Mongosh Log ID: 64ed9c7fbb05398bb1cf0807
+
+Logged into our mongo instance
+
+
+test> db                                                     ---------> this is given already so that we have any db we can connect to
+test
+
+test> use mydb                                               --------> creating a new db
+switched to db mydb
+mydb> show dbs                                               -----------> you won't be shown any new db until you ad any entery to it
+admin   100.00 KiB
+config   60.00 KiB
+local    72.00 KiB
+
+
+
+
+Adding a value to the new db
+----------------------------
+
+mydb> db.books.insert({"name": "harry potter"})               
+DeprecationWarning: Collection.insert() is deprecated. Use insertOne, insertMany, or bulkWrite.
+{
+  acknowledged: true,
+  insertedIds: { '0': ObjectId("64ed9d7cbb05398bb1cf0808") }
+}
+
+
+
+Locating the same insertion
+---------------------------
+
+
+mydb> db.books.find()                             
+[ { _id: ObjectId("64ed9d7cbb05398bb1cf0808"), name: 'harry potter' } ]
+mydb> show dbs
+admin   100.00 KiB
+config   60.00 KiB
+local    72.00 KiB
+mydb     40.00 KiB
+
+
+FASTER WAY: docker exec -it node-docker_mongo_1 mongo -u "bhanumalhotra" -p "mypassword"
+
+----------------------------------------------------------------------------------------
+
+
+24. DB IS LOST
+
+Now docker-compose -f docker-compose.yml -f docker-compose.dev.yml  down -v 
+
+Check the dbs again once you up the containers again db data is lost
+
+---------------------------------------------------------------------------------------
+
+
+
+25. We need NAMED VOLUMES
+--------------------------Logging in mongodb is easy so it ain't a good idea to use bind mount
+
+We can use volumes to save our data but using anonymous volumes here isn't a good choice to save application data, we need a perfect name to remember for it
+
+
+
+
+  node-app:
+    build: .
+    environment:
+      - PORT=3000
+    depends_on:
+      - mongo
+
+  mongo:
+    image: mongo
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=bhanumalhotra
+      - MONGO_INITDB_ROOT_PASSWORD=mypassword
+    volumes:
+      - mongo-db:/data/db                         ---------------------> adding the named volumes
+
+volumes:                                          ----------------------> we need to declare the named value seperatly as well, because a named volume can be used by multiple services.
+  mongo-db:
+
+
+now get into docker container and add a value to mydb
+
+tear down the container and up again without -v flag, you will find your db with the insertion you had done previously.
+
+
+------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+25. Tear down the container, but REMEMBER when using down command we can't use -v flag as it removes it not only REMOVES ANONYMOUS VOLUMES BUT NAMED VOLUMES ALSO. 
+Instead use down command without -v and later use docker prune command instead (doesnt remove the volumes attached to running containers) so keep your container running.
+
+
+
+
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+
+26. Let us connect our Express Application to our MONGODB now.
+--------------------------------------------------------------
+
+https://mongoosejs.com/docs/    Mongoose will be used to connect both(check the docs for configuring)
+
+npm install mongoose
+
+a) We need to import it in index.js --> const mongoose = require("mongoose");
+
+
+b) for connecting to the db from your application add this to your index.js:
+
+
+mongoose.connect("mongodb://bhanumalhotra:mypassword@ip-address")
+
+
+From where do we get ip address? Docker assign ips to your containers automatically
+
+
+docker inspect nodedocker-node-app-1
+
+ "Networks": {
+                "nodedocker_default": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": [
+                        "nodedocker-node-app-1",   ----------> container name
+                        "node-app",
+                        "5d61117411c5"
+                    ],
+                    "NetworkID": "94958cc7701149596771934d5f26000e143b9b53ecd655763faa574a0dd3531b",
+                    "EndpointID": "6d190d23b66d05dce461f6988533cc70d8fd37c61a87c61d1942346725823d79",
+                    "Gateway": "192.168.176.1",
+                    "IPAddress": "192.168.176.3",         -----------------> ip address
+                    "IPPrefixLen": 20,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "MacAddress": "02:42:c0:a8:b0:03",
+                    "DriverOpts": null
+
+
+
+(containers only in 1 network can talk to other each other)
+
+
+We need ip of mongodb container
+
+"MacAddress": "",
+            "Networks": {
+                "nodedocker_default": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": [
+                        "nodedocker-mongo-1",
+                        "mongo",
+                        "7930f1985284"
+                    ],
+                    "NetworkID": "94958cc7701149596771934d5f26000e143b9b53ecd655763faa574a0dd3531b",
+                    "EndpointID": "ad999269b7c0da34757add05ff4e000907fb2b37a73257744ae8b3674551a5af",
+                    "Gateway": "192.168.176.1",
+                    "IPAddress": "192.168.176.2",   --------> get the ip from here
+                    "IPPrefixLen": 20,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "MacAddress": "02:42:c0:a8:b0:02",
+                    "DriverOpts": null
+                }
+            }
+--------------------------------------------
+
+mongoose.connect("mongodb://bhanumalhotra:mypassword@192.168.176.2:27017/?authSource=admin")
+  .then(() => console.log("successfully connected to DB"))
+  .catch((e) => console.log(e));
+
+
+
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker logs nodedocker-node-app-1
+
+> nodedocker@1.0.0 dev
+> nodemon -L index.js
+
+[nodemon] 3.0.1
+[nodemon] to restart at any time, enter `rs`
+[nodemon] watching path(s): *.*
+[nodemon] watching extensions: js,mjs,cjs,json
+[nodemon] starting `node index.js`
+Listening on port 3000
+[nodemon] restarting due to changes...
+[nodemon] starting `node index.js`
+Listening on port 3000
+successfully connected to DB
+[nodemon] restarting due to changes...
+[nodemon] starting `node index.js`
+Listening on port 3000
+successfully connected to DB
+PS C:\Users\LENOVO\Desktop\nodedocker> 
+
+
+
+---------------------------------------------------------------------------------------
+
+
+
+27. DNS works in docker custom networks(not the host and bridge), we may not get the same ip back for a container if it goes down and then up.
+
+but getting the ip everytime like this? Nahhh cumbersome
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker network ls
+NETWORK ID     NAME                 DRIVER    SCOPE
+6b548ff09b94   bridge               bridge    local    ----> default
+62ac278a0122   host                 host      local    ----> default
+94958cc77011   nodedocker_default   bridge    local    ---------> docker compose created this for our application, only with custom network we have DNS, basically we can use 
+9d49946edd3a   none                 null      local
+
+If i call mongo service from my node-app it will call its ip 
+
+mongoose.connect("mongodb://bhanumalhotra:mypassword@mongo:27017/?authSource=admin")
+
+
+You can test this by pinging the mongo:
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker exec -it nodedocker-node-app-1 bash
+root@5d61117411c5:/app# ping mongo
+PING mongo (192.168.176.2) 56(84) bytes of data.
+64 bytes from nodedocker-mongo-1.nodedocker_default (192.168.176.2): icmp_seq=1 ttl=64 time=0.455 ms
+
+
+
+
+-------------------------------------------------------------------------------------------------------------------
+
+
+
+28.Hardcoding our mongo URL doesn't seem like a great idea
+We can't use dns if you ever move mongo container outside of docker world. So we can give default value as mongo but if it is set it will use the value that has been set.
+
+
+config file under a config folder
+
+module.exports = {                              --------------> exporting these env variables 
+    MONGO_IP: process.env.MONGO_IP || "mongo",
+    MONGO_PORT: process.env.MONGO_PORT || 27017,
+    MONGO_USER: process.env.MONGO_USER,
+    MONGO_PASSWORD: process.env.MONGO_PASSWORD
+
+}
+
+mongoose.connect(`mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_IP}:${MONGO_PORT}/?authSource=admin`)      change the connect line and give environment variables instead
+
+
+
+
+const { MONGO_USER, MONGO_PASSWORD, MONGO_IP, MONGO_PORT } = require("./config/config");   add this line to index.js as well so that it fetches values from config file
+         
+
+now check the docker logs ---> It crashed
+
+
+----------------------------------------------------------------------------------------------------------------------------
+
+
+29. We haven't passed the env variables username and password, we have to pass them in our dockercompose file
+
+ and also let us split mongo in dev and prod 
+
+docker-compose.dev.yml
+
+version: "3"
+services: 
+  node-app:
+    build:
+      context: .
+      args: 
+        NODE_ENV: development
+    volumes:
+      -  ./:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development                                                   (remember to give under node-app not mongo)
+      - MONGO_USER=bhanumalhotra                           ------------------> passing the environment variables to the node-app service so that our node app can connect to mongo container
+      - MONGO_PASSWORD=mypassword
+    command: npm run dev
+  mongo:                                                   -----------------> you don't need to add the image as it doesn't changes as per environment.
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=bhanumalhotra
+      - MONGO_INITDB_ROOT_PASSWORD=mypassword
+
+
+
+rebuild container as you have added more env variables
+
+Now down and up the container. Connected!
+
+check the docker logs nodedocker-node-app-1 -f
+
+listening on port 3000
+succesfully connected to DB
+
+
+-------------------------------------------------------------------------------------------------------------------------------
+30. Storing mongo url that is used to connect to mongodb from node-app give in our index.js, save it in a variable:
+
+const mongoURL = `mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_IP}:${MONGO_PORT}/?authSource=admin`;
+
+
+const connectWithRetry = () => {
+  mongoose
+    .connect(mongoURL, {                <------------------------  Here you can mention the variable only(keeping the code clean)
+      
+      useUnifiedTopology: true,
+      
+    })
+    .then(() => console.log("succesfully connected to DB"))
+    .catch((e) => {
+      console.log(e);
+      setTimeout(connectWithRetry, 5000);
+    });
+};
+
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+
+31. NO IDEA OF ORDER which one will come up first? We want to have mongo first as node-app container have to connect with it.
+
+
+
+depends_on:
+  - mongo       ---------> under node-app service in docker-compose.yml
+
+------------------
+version: "3"
+services:
+  node-app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+    depends_on:                                     --------------------------> depends_on (so that mongo container starts first)
+      - mongo
+  mongo:
+    image: mongo
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=bhanumalhotra
+      - MONGO_INITDB_ROOT_PASSWORD=mypassword
+    volumes:
+      - mongo-db:/data/db
+volumes:
+  mongo-db:      
+
+
+
+
+32. But this doesn't give assurance as DOCKER DOESN'T KNOW if MONGO IS COMPLETELY READY OR NOT TO CONNNECT, IT JUST SPINS THE MONGO CONTAINER FIRST.
+
+
+
+docker or docker-compose can't do anything or even orchestrator is not good enough to handle it.
+
+
+We should implement some sort of logic in your application to handle this
+-------------------------------------------------------------------------
+
+Retrying until it is ready
+
+mongoose tries for 30sec to connect your application to the mongodb and then it crashes.
+------------------------
+
+
+
+
+The change in code we bring: Placing the connection in connectWithRetry
+
+
+const connectWithRetry = () => {
+    mongoose
+    .connect(mongoURL)
+    .then(() => console.log("successfully connected to DB"))
+    .catch((e) => {
+      console.log(e);
+      setTimeout(connectWithRetry, 5000)                    ---------------------> if it catches error it displays the error but to try connecting again and again(wait for 5 seconds and retry until it connects and breaks out of the loop.)
+});
+}
+ 
+connectWithRetry();                                         ----------------------> calling the function so that it acts
+
+
+
+------------------------------------------------------------------------------------------
+
+
+
+33. Now the command which makes only 1 container up not the both   --no-deps
+
+------------------------------------------------------------------------------
+
+
+Test by just bringing up the node-app container, you will notice it will bring mongo container up first
+
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d node-app  ------------> name of service
+[+] Running  
+ ✔ Network nodedocker_default       Created                                                          0.1s 
+ ✔ Container nodedocker-mongo-1     Started                                                          2.2s 
+ ✔ Container nodedocker-node-app-1  Started                                                          2.6s 
+PS C:\Users\LENOVO\Desktop\nodedocker> 
+
+it still created the mongo container first
+
+
+--no-deps          has to be used
+
+
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d --no-deps node-app
+[+] Running 2/2
+ ✔ Network nodedocker_default       Created                                                                                                                   0.1s 
+ ✔ Container nodedocker-node-app-1  Started  
+
+
+
+now, the node-app container will keep on trying to connect with mongo container, but the connection will keep on timing out as our mongo container is not up yet
+you can check that in logs
+
+
+Now if you bring up mongo service:
+
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d mongo
+
+Keep an eye on logs, your node app will connect to the mongo container soon with the help of creds you passed as environment variables in compose dev file under the node-app application service
+
+
+------------------------------------------------------------------------------------------------------------------------------------
+
+We will build a demo CRUD application now : create, read, update and delete
+
+A blog website
+
+
+1. Creating few folders:
+a)modles                          stores our mongoose models
+b)controllers
+c)routes
+
+
+Routes: Entry point for incoming requests. Routes determine which controller should handle a specific request based on the URL and HTTP method.
+
+Controllers: Controllers contain the application's business logic. They interpret the request, interact with models, and send the appropriate response back to the client.
+
+Models: Models represent the core data structures and business logic of your application. They encapsulate the data and operations that your application performs on that data.
+
+Data Access: This layer handles the retrieval and manipulation of data from various sources. It could involve querying databases, making API requests, or any other form of data interaction. By separating this concern from the models, you ensure that the models remain focused on the application's business logic.
+
+
+ 
+
+                 ┌───────────────┐
+    Request ────►│    Routes     │
+                 └──────┬────────┘
+                        │
+                        ▼
+                 ┌───────────────┐
+                 │ Controllers   │
+                 └──────┬────────┘
+                        │
+                        ▼
+                 ┌───────────────┐
+                 │    Models     │
+                 └───────────────┘
+
+                        │
+                        ▼
+                 ┌───────────────┐
+                 │   Data Access │
+                 └───────────────┘
+
+
+1. postModels.js under models folder (something to represent our blog posts )
+
+
+// Import the mongoose library, which allows us to interact with MongoDB
+const mongoose = require("mongoose");
+
+
+// Define the structure of the Post using a schema
+const postSchema = new mongoose.Schema({
+  // Define the 'title' field of the Post
+  title: {
+    type: String,           // The data type of this field is a string
+    required: [true, "Post must have a title"],  // It is required and needs an error message if not provided
+  },
+  // Define the 'body' field of the Post
+  body: {
+    type: String,           // The data type of this field is a string
+    required: [true, "Post must have a body"],   // It is required and needs an error message if not provided
+  },
+});
+
+ // Create a Post model using the defined schema
+const Post = mongoose.model("Post", postSchema);
+
+// Export the Post model to be used in other parts of the application
+module.exports = Post;
+
+
+
+
+
+
+2. Now let us create controllers so that we can handle creating, deleting, updating and reading our posts
+
+
+vi postController.js under controllers folder
+
+
+a) import the post model
+
+
+----------) define our Controller to FETCHING ALL THE POSTS from the database using the Post model, if there can be errors try to put it in try, catch block. .send response 200 if success and in results give number of posts and the posts, send 400 if error
+
+
+
+
+// Import the Post model from the "../models/postModel" file
+const Post = require("../models/postModel");
+
+
+
+
+
+
+// Function to get all posts
+exports.getAllPosts = async (req, res, next) => {
+  try {
+    // Fetch all posts from the database using the Post model
+
+    const posts = await Post.find();                      -----------> method used is Post.find()
+
+    // Send a success response with the fetched posts
+
+    res.status(200).json({
+      status: "success",
+      results: posts.length,                              -----------> returns the number of posts
+      data: {
+        posts,                                            ------------> returns the posts
+      }, 
+    });
+  } catch (e) {
+    // If there's an error, send a failure response
+    res.status(400).json({
+      status: "fail",
+    });
+  }
+};
+
+
+
+
+
+
+
+----------------) define Controller for Fetching a SINGLE POST
+
+
+localhost:3000/api/v1/posts/id       --------> to retrieve this id we do req.params.id
+
+
+
+
+// Function to get a single post by its ID                 
+exports.getOnePost = async (req, res, next) => {
+  try {
+    // Find a post by its ID in the database using the Post model
+    const post = await Post.findById(req.params.id);         ------------> method used is findById and to retrieve this id we do req.params.id
+
+    // Send a success response with the fetched post
+    res.status(200).json({
+      status: "success",
+      data: {                                                ------------> in fetching one post we don't need the result as it is not an array
+        post,                                                ------------> post is used not posts
+      },
+    });
+  } catch (e) {
+    // If there's an error, send a failure response
+    res.status(400).json({
+      status: "fail",
+    });
+  }
+};
+
+
+
+
+
+------------------) define controller for CREATING A POST
+
+// Function to create a new post
+exports.createPost = async (req, res, next) => {
+  try {
+    // Create a new post in the database using the data from the request body
+    const post = await Post.create(req.body);                               ----------------> method used is Post.create(the title and the body that the front end sends is going to be attached to our body properties)
+
+    // Send a success response with the created post
+    res.status(201).json({
+      status: "success",
+      data: {
+        post,
+      },
+    });
+  } catch (e) {
+    // If there's an error, log it and send a failure response
+    console.log(e);
+    res.status(400).json({
+      status: "fail",
+    });
+  }
+};
+
+
+
+----------------------------------------) define controller for UPDATING  A POST
+
+
+
+
+
+// Function to update a post by its ID
+exports.updatePost = async (req, res, next) => {
+  try {
+    // Find a post by its ID and update it with the data from the request body
+    const post = await Post.findByIdAndUpdate(req.params.id, req.body, {               ---------------> method used is findByIdAndUpdate, need to pass the id and body(having content of our post)
+      new: true,          // Return the updated post
+      runValidators: true // Run data validation during update                                           (go back to models and check if it do have title and body)
+    });
+
+    // Send a success response with the updated post
+    res.status(200).json({
+      status: "success",
+      data: {
+        post,
+      },
+    });
+  } catch (e) {
+    // If there's an error, send a failure response
+    res.status(400).json({
+      status: "fail",
+    });
+  }
+};
+
+
+
+
+---------------------------------) define controller for DELETING A POST
+
+
+
+// Function to delete a post by its ID
+exports.deletePost = async (req, res, next) => {
+  try {
+    // Find a post by its ID and delete it from the database
+    await Post.findByIdAndDelete(req.params.id);
+
+    // Send a success response
+    res.status(204).json({
+      status: "success",
+    });
+  } catch (e) {
+    // If there's an error, send a failure response
+    res.status(400).json({
+      status: "fail",
+    });
+  }
+};
+
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+Now define postRoutes.js under routes folder:
+
+
+
+
+
+
+// Import the Express library
+const express = require("express");
+
+// Import the postController module responsible for handling post-related actions
+const postController = require("../controllers/postController");
+
+// Create an instance of an Express Router
+const router = express.Router();
+
+// Define routes for different operations related to posts
+
+// Define the route for getting all posts and creating a new post
+router
+  .route("/")
+  .get(postController.getAllPosts)    
+  .post(postController.createPost);   
+
+// Define the route for getting, updating, and deleting a specific post by its ID
+router
+  .route("/:id")
+  .get(postController.getOnePost)    
+  .patch(postController.updatePost)   
+  .delete(postController.deletePost); 
+
+// Export the router to be used in other parts of the application
+module.exports = router;
+
+
+
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+now wire the router in our index.js
+
+
+// Import route handlers for posts
+const postRouter = require("./routes/postRoutes");
+
+// Define routes for posts and users using the imported routers
+app.use("/api/v1/posts", postRouter);
+
+
+
+
+On postman test GET http:///localhost:3000/api/v1/posts
+
+won't get anything but success
+
+
+POST http:///localhost:3000/api/v1/posts 
+under body give 
+
+{
+  "title": "my first post",
+  "body": "body of first post"
+}
+
+
+This will fail and in logs of node-app container you will notice post must have a body err.
+
+
+READ THIS CAREFULLY_______________________________________________________________________
+-------------------------------------------------------------------------------------------
+
+Why?
+For request to take the body of the actuall request and attach it to that request object  which our controllers have access to we have to pass in a middleware
+ 
+
+Solution:add the following to the index.js
+
+
+// Parse JSON request bodies
+app.use(express.json());
+
+
+
+Now try again this time it will create a post and give you the id as respones
+
+
+You can try other things too, like getting individual post, all posts, delete post, update post
+
+
+------------------------------------------------------------------------------------------------------
+
+WITH THIS WE ARE DONE WITH BASIC CRUD FUNCTIONALITY 
+
+__________________________________________________________________________________________________________
+
+
+Now let us try to add user signup and login functionallity.
+
+Why?
+
+we want to introduce redis for authentication
+
+Basically 1 more container
+__________________________
+
+
+1. userModel.js
+
+
+// Import the mongoose library, which allows us to interact with MongoDB
+const mongoose = require("mongoose");
+
+// Define the structure of the User using a schema
+const userSchema = new mongoose.Schema({
+  // Define the 'username' field of the User
+  username: {
+    type: String,                 // The data type of this field is a string
+    required: [true, "User must have a username"],  // It is required and needs an error message if not provided
+    unique: true,                 // The 'username' must be unique in the database
+  },
+  // Define the 'password' field of the User
+  password: {
+    type: String,                 // The data type of this field is a string
+    required: [true, "User must have a password"],  // It is required and needs an error message if not provided
+  },
+});
+
+// Create a User model using the defined schema
+const User = mongoose.model("User", userSchema);
+
+// Export the User model to be used in other parts of the application
+module.exports = User;
+
+_______________________________________________________________________________
+authController.js
+
+
+
+// Importing necessary modules and files
+const User = require("../models/userModel"); // Importing the User model
+
+
+// Defining the function to handle user sign up
+
+exports.signUp = async (req, res) => {
+  
+
+  try {
+
+    // Creating a new user 
+    const newUser = await User.create(req.body)
+
+    // Sending a successful response with the new user's information
+    res.status(201).json({
+      status: "success",
+      data: {
+        user: newUser,
+      },
+    });
+  } catch (e) {
+    // Handling errors by sending a failure response
+    res.status(400).json({
+      status: "fail",
+    });
+  }
+};
+
+
+
+______________________________________________________________________________
+
+
+userRoutes.js
+
+
+// Import the Express library
+const express = require("express");
+
+// Import the authController module responsible for authentication actions
+const authController = require("../controllers/authController");
+
+// Create an instance of an Express Router
+const router = express.Router();
+
+// Define routes for user authentication
+
+// Define the route for user signup
+router.post("/signup", authController.signUp);
+
+// Define the route for user login
+router.post("/login", authController.login);
+
+// Export the router to be used in other parts of the application
+module.exports = router;
+ 
+________________________________________________________________________________
+
+
+additions to index.js 
+
+
+// Import route handlers for posts and users
+const postRouter = require("./routes/postRoutes");
+const userRouter = require("./routes/userRoutes");
+
+
+
+// Define routes for posts and users using the imported routers
+app.use("/api/v1/posts", postRouter);
+app.use("/api/v1/users", userRouter);
+
+
+Test in postman
+POST  http:///localhost:3000/api/v1/users/signup
+
+{
+   "username": "bhanumalhotra"
+   "password": "mypassword"
+}
+
+
+___________________________________________________________________________________
+
+
+ ISSUE PASSWORD IS BEING STORED IN PLAIN TEXT 
+
+npm install bcryptjs
+
+
+Rebuild docker image so as to include this dependency in your package.json(use --build)
+
+once container is up
+
+
+
+______________________
+
+// Importing necessary modules and files
+const User = require("../models/userModel"); // Importing the User model
+
+const bcrypt = require("bcryptjs"); // Importing the bcrypt library for password hashing      ------> importing bcrypt 
+
+// Defining the function to handle user sign up
+exports.signUp = async (req, res) => {
+
+  // Extracting the username and password from the request body
+  const { username, password } = req.body;                                             ------------> extracting username and password
+
+  try {
+    // Hashing the provided password using bcrypt with a complexity factor of 12
+    const hashpassword = await bcrypt.hash(password, 12);                            ---------------> hashing the password that is extracted
+
+    // Creating a new user with the hashed password 
+    const newUser = await User.create({
+      username,                                                                        ---------------> a new user is created with the hashed password
+      password: hashpassword,
+    });
+
+    // Storing the information of the newly created user in the session
+    req.session.user = newUser;
+
+    // Sending a successful response with the new user's information
+    res.status(201).json({
+      status: "success",
+      data: {
+        user: newUser,
+      },
+    });
+  } catch (e) {
+    // Handling errors by sending a failure response
+    res.status(400).json({
+      status: "fail",
+    });
+  }
+};
+
+
+
+
+save it
+
+Test in postman
+POST  http:///localhost:3000/api/v1/users/signup
+
+{
+   "username": "bhanumalhotra"
+   "password": "mypassword"
+}
+
+
+
+this time you will have hash password
+
+__________________________________________
+
+
+
+now let us define controller for login functionallity
+
+// Defining the function to handle user login
+
+exports.login = async (req, res) => {
+  // Extracting the username and password from the request body
+  const { username, password } = req.body;                       ---------------------------> extracting username and password
+
+  try {
+    // Finding a user in the database with the provided username
+    const user = await User.findOne({ username });               ---------------------------> finding user in databse using method User.findOne
+
+    // If user not found, send a failure response
+    if (!user) {                                                 ---------------------------> if user was not found we will send 404 with a message user not found
+      return res.status(404).json({
+        status: "fail",
+        message: "user not found",
+      });
+    }
+
+    // Comparing the provided password with the hashed password stored in the database     
+    const isCorrect = await bcrypt.compare(password, user.password);                   -------------> comparing the password enterd and stored password
+
+    if (isCorrect) {
+      // If passwords match, store user information in the session and send a success response
+      req.session.user = user;                                                            -----------> if matches 200
+      res.status(200).json({
+        status: "success",
+      });
+    } else {
+      // If passwords don't match, send a failure response                              -----------> if it doesn't match 400
+      res.status(400).json({
+        status: "fail",
+        message: "incorrect username or password",
+      });
+    }
+  } catch (e) {
+    // Handling errors by sending a failure response
+    res.status(400).json({
+      status: "fail",
+    });
+  }
+};
+
+__________________________________________
+
+add routes to userRoutes.js
+
+
+// Define routes for user authentication
+
+// Define the route for user signup
+router.post("/signup", authController.signUp);
+
+// Define the route for user login
+router.post("/login", authController.login);
+
+
+_________________________________________________________________
+
+
+
+now try logging in with the user you created using signup
+
+POST http://localhost:3000/api/v1/users/login
+
+
+It should pass
+
+_____________________________________________________________________________________________
+
+
+
+Implementing authentication:  (JWT or sessions )
+
+we will use express sessions
+
+and will wire up express sessions with redis databse
+
+we will be using sessions in this case 
+
+
+https://www.npmjs.com/package/express-session
+
+https://www.npmjs.com/package/connect-redis
+
+MAJOR PROBLEM SOLVED HERE:  version issue
+___________________________ 
+
+
+First let us get a redis container
+
+
+docker-compose.yml
+
+
+
+version: "3"
+services:
+  node-app:
+    build: .
+    ports: 
+      - "3000:3000"
+    environment:
+      - PORT=3000
+    depends_on:
+      - mongo
+
+  mongo:
+    image: mongo
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=sanjeev
+      - MONGO_INITDB_ROOT_PASSWORD=mypassword
+    volumes:
+      - mongo-db:/data/db
+
+  redis:
+    image: redis
+
+volumes:
+  mongo-db:
+
+
+
+
+
+You can directly use docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+you don't have to pass down command first
+
+_________________________________________________________________________
+
+ 
+
+
+npm install connect-redis@3.4.1
+npm install redis@3.0.0 
+npm install express-session
+
+
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml down -v
+
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+
+____________________________________________________________________________
+
+when your containers are already up and running and you again do up.
+
+it picks the old anonymous volumes(node_modules folder)
+
+we have to tell docker to install the newer ones
+
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build -V     ------> pass capital V to create new anonymous volume.
+
+ 
+index.js
+
+
+/ Import required libraries and modules
+const express = require("express");           // Express framework for creating web applications
+const mongoose = require("mongoose");         // Mongoose for working with MongoDB database
+const session = require("express-session");   // Express session for managing user sessions              -->new
+const redis = require("redis");               // Redis for caching and data storage                      -->new
+let RedisStore = require("connect-redis")(session); // Connect Redis with Express session        ---> new
+
+
+// Create a Redis client
+let redisClient = redis.createClient({
+  host: REDIS_URL,
+  port: REDIS_PORT,
+});
+
+
+
+
+// Configure Express session
+app.use(
+  session({
+    store: new RedisStore({ client: redisClient }), // Use Redis for session storage
+    secret: SESSION_SECRET,                         // Secret key for session encryption
+    cookie: {
+      secure: false,          // Set to true in production for secure HTTPS-only cookies
+      resave: false,
+      saveUninitialized: false,
+      httpOnly: true,          // Prevent client-side scripts from accessing cookies
+      maxAge: 30000,           // Maximum age of the session (in milliseconds)
+    },
+  })
+);
+
+
+
+module.exports = {
+    MONGO_IP: process.env.MONGO_IP || "mongo",
+    MONGO_PORT: process.env.MONGO_PORT || 27017,
+    MONGO_USER: process.env.MONGO_USER,
+    MONGO_PASSWORD: process.env.MONGO_PASSWORD,
+    REDIS_URL: process.env.REDIS_URL || "redis",
+    REDIS_PORT: process.env.REDIS_PORT || 6379,       --> new
+    SESSION_SECRET: process.env.SESSION_SECRET,
+  };
+
+
+
+
+
+
+dev file:
+
+version: "3"
+services:
+  nginx:
+    ports:
+      - "3000:80"
+  node-app:
+    build:
+      context: .
+      args:
+        NODE_ENV: development
+    volumes:
+      - ./:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - MONGO_USER=bhanumalhotra
+      - MONGO_PASSWORD=mypassword
+      - SESSION_SECRET=secret   -------------> new addition
+
+    command: npm run dev
+
+
+
+-----------------------------------________________________sessions wired up
+
+
+POST https://localhost:3000/api/v1/users/login
+
+{
+  "username": "bhanumalhotra"
+  "usrename": "password"
+
+}
+
+
+status: success
+you will get cookie and expire session values this time, HttpOnly
+
+now last coloumn secure if is set to true it means it only works with https (for production)
+
+other than that if it is set to false it works with http as well
+
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker exec -it nodedocker-redis-1 bash
+root@ce94acb0106c:/data# redis-cli
+127.0.0.1:6379> KEYS *
+(empty array)
+
+
+It is empty as there is limit to the session i.e 30seconds.
+
+
+if you re-login you will find an entry in redis database
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker exec -it nodedocker-redis-1 bash
+root@ce94acb0106c:/data# redis-cli
+127.0.0.1:6379> KEYS *
+1) "sess:yA8vHpe2o!_1-kME3TbrINEqTgagVqjC"
+
+
+If tou want to see details for the session, you can type:
+
+GET "sess:yA8vHpe2o!_1-kME3TbrINEqTgagVqjC"
+
+This gives you some info like cookies etc
+
+
+With this session we can add any info we want, 
+ what we ideally wanna do is we want to save the user info when the user logs in the session. So if user info is in session it will mean he is logged in, if user info is not in session it will ean he is not logged it.
+
+
+this session resides in database, it is not shown where user is trying to loggin to the browser 
+________________________________________________________________________________________________________
+
+
+authController.js
+
+ if (isCorrect) {
+      // If passwords match, store user information in the session and send a success response
+      req.session.user = user;                      -------------------------------------------------------> add this to store info
+      res.status(200).json({
+        status: "success",
+      });
+    } else {
+      // If passwords don't match, send a failure response
+      res.status(400).json({
+        status: "fail",
+        message: "incorrect username or password",
+      });
+    }
+  } catch (e) {
+    // Handling errors by sending a failure response
+    res.status(400).json({
+      status: "fail",
+    });
+  }
+};
+
+
+
+now save it and
+ 
+
+try logging again 
+
+
+and do KEY * in your redis
+
+
+then GET "session....."
+
+
+this time you will find more info like mongodb ID that assigned it  then username and password
+
+
+This is how we tell a user is logged in
+
+
+after 30seconds it will be gone.
+_______________________________________________________________________________________________________________________
+
+after user signs up we want the same thing for him that is his, his info should be saved for the session
+
+
+
+/ Defining the function to handle user sign up
+exports.signUp = async (req, res) => {
+  // Extracting the username and password from the request body
+  const { username, password } = req.body;
+
+  try {
+    // Hashing the provided password using bcrypt with a complexity factor of 12
+    const hashpassword = await bcrypt.hash(password, 12);
+
+    // Creating a new user with the hashed password
+    const newUser = await User.create({
+      username,
+      password: hashpassword,
+    });
+
+    // Storing the information of the newly created user in the session
+    req.session.user = newUser;                                                 ------------------------------> saving the info for the session
+
+    // Sending a successful response with the new user's information
+    res.status(201).json({
+      status: "success",
+      data: {
+        user: newUser,
+      },
+    });
+  } catch (e) {
+    // Handling errors by sending a failure response
+    res.status(400).json({
+      status: "fail",
+    });
+  }
+};
+
+zsimilary test for sigup
+
+http://localhost:3000/api/v1/users/signup
+
+
+{
+  "username": "bhanu1",
+  "password": "password"
+}
+
+
+
+get into redis
+
+redis-cli
+
+
+KEYS *
+
+GET "session....."
+
+
+you will see it give you user info
+
+
+now whether we sign up or login it will assign the user to the session. So now we can access the user whenever we want to access the posts
+
+______________________________________________________________________________________________
+
+for CRUD users have to be logged in
+
+
+how to setup the logic?
+
+
+express middleware
+
+a function which runs before your controller
+
+checks  sessions object if there is a user property attached to it, if yes forwards to controller
+
+if not sends the error status
+
+
+
+mkdir middleware
+
+vi authMiddleware.js
+
+// Define a middleware function called 'protect'
+const protect = (req, res, next) => {
+    // Extract the 'user' data from the 'session' object in the request
+    const { user } = req.session;                   
+    
+    // Check if 'user' data exists in the session
+    if (!user) {
+      // If 'user' data doesn't exist, send a 401 Unauthorized response with an error message
+      return res.status(401).json({ status: "fail", message: "unauthorized" });
+    }
+  
+    // If 'user' data exists in the session, assign it to the 'user' property of the request object
+    req.user = user;
+    
+    // Call the 'next' function to proceed to the next middleware or route handler
+    next();
+};
+
+// Export the 'protect' middleware function to be used in other parts of the application
+module.exports = protect;
+
+
+________________________________________________________________________________________________________
+postRoutes.js
+
+
+/ Import the Express library
+const express = require("express");
+
+// Import the postController module responsible for handling post-related actions
+const postController = require("../controllers/postController");
+
+// Import the protect middleware for authentication 
+const protect = require("../middleware/authMiddleware");                             --------------------------> importing the protect middleware
+
+// Create an instance of an Express Router
+const router = express.Router();
+
+// Define routes for different operations related to posts
+
+// Define the route for getting all posts and creating a new post
+router
+  .route("/")
+  .get(protect, postController.getAllPosts)    // Requires authentication using the protect middleware
+  .post(protect, postController.createPost);   // Requires authentication using the protect middleware ----------------> when user hits this end point our middleware checks if user is logged in or not and then either it goes straight to postController.createpost or it fails
+
+// Define the route for getting, updating, and deleting a specific post by its ID
+router
+  .route("/:id")
+  .get(protect, postController.getOnePost)    // Requires authentication using the protect middleware
+  .patch(protect, postController.updatePost)   // Requires authentication using the protect middleware
+  .delete(protect, postController.deletePost); // Requires authentication using the protect middleware
+
+// Export the router to be used in other parts of the application
+module.exports = router;
+
+
+
+POST  http://localhost:3000/api/v1/users/login
+
+{
+  "username":"bhanumalhotra",
+  "password":"password"
+}
+
+
+
+the session will be created and will expire in the time set for it(say 60 seconds)
+
+POST http://localhost:/3000/api/v1/posts
+
+{
+  "title": "5th post",
+  "body": "body of fifth post"
+}
+
+It should work and create the post as for the time set for session to expire is 60sec, which means user data is available in session for 60sec
+
+so protect middleware authenticate the request and your post is created.
+
+
+once the session ends user data will be no longer available in our session. so no more authentication given by middleware. you can't create another post
+
+
+______________________________________________________________________________________________________________________________________________
+index.js
+
+// Configure Express session
+app.use(
+  session({
+    store: new RedisStore({ client: redisClient }), // Use Redis for session storage
+    secret: SESSION_SECRET,                         // Secret key for session encryption
+    cookie: {
+      secure: false,          // Set to true in production for secure HTTPS-only cookies
+      resave: false,
+      saveUninitialized: false,
+      httpOnly: true,          // Prevent client-side scripts from accessing cookies
+      maxAge: 30000,           // Maximum age of the session (in milliseconds)            ------------------------> for real life application this will be higher
+    },
+  })
+);
+
+_________________________________________________________________________________________________________________________________________________
+
+
+In the context of web development, middleware is often used for two main purposes:
+
+Request Processing: Middleware can be used to perform tasks before a request reaches the controller. 
+This can include tasks like authentication, validation, parsing request data, and handling CORS (Cross-Origin Resource Sharing) headers. 
+It allows you to preprocess the incoming request and prepare it for further processing.
+
+Response Processing: Middleware can also be used to manipulate the response before it is sent back to the client. 
+This might involve adding headers, modifying the response content, or performing other post-processing tasks.
+
+Right now we don't have logic to assign a post to a particular user, right now any user can create post and edit any post.
+
+We are focusing on docker not the application code, so let us get back to production setup.
+
+________________________________________________________________________________________________________________________________________________
+
+Note: We didn't open port on our local machine and then attach it to mongo container, why? In general we don't want the outside world to talk to our database as it can container important info
+
+
+LOVE FOR DOCKER: It doesn't open ports for the container on machine by default.
+
+
+__________________________________________________________________________________________________________________________________________________
+
+Let us talk about scaling up !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! for PRODUCTION
+ 
+
+
+2 node containers
+
+
+-------------------------->PORT 3000(machine it is hosted on) ---------------------->PORT 3000 on Node/Express ----------------------| 
+                                                                                                                                     |  mongodb (PORT27017)
+-------------------------->PORT 30001(machine it is hosted on)---------------------->PORT 3000 on Node/Express ----------------------|
+
+
+but the problem with this is number of ports that has to be opened up on host machine will go higher as we scale node-app containers
+
+and moreover it should not be revealed to the frontend how many containers are running in the background
+
+
+______________________________________________________________________________________
+
+
+LOAD BALANCER: NGINX
+
+
+                           |      |-----------------|----------->PORT 3000 on Node/Express ----------------------| 
+  3000 machine port   | ---->     | PORT 80- NGINX  |                                                            |  mongodb (PORT27017)
+                           |      |-----------------|----------->PORT 3000 on Node/Express ----------------------|
+
+
+Main Configuration Block (nginx.conf): The central settings area for Nginx, where global configurations are defined for the entire server.
+Events: Manages how Nginx handles events, like client connections and worker processes, influencing how it efficiently manages incoming requests.
+HTTP: Provides a space for defining configurations related to serving websites and web applications via HTTP protocols.
+Server Block: Represents an individual website or application, containing its unique settings like domain, port, and behavior.
+Location Block: Customizes how Nginx processes requests for specific URLs, allowing distinct actions for different paths within a server.
+Upstream: Organizes multiple backend servers, often used for load balancing and proxying to distribute incoming requests.
+Mail: A module that lets Nginx handle mail protocols like SMTP and IMAP, useful for proxying and balancing mail-related traffic.
+
+
+
+
+
+mkdir nginx
+
+cd nginx
+
+vi default.conf
+
+# Define a server block that listens on port 80
+server {
+    listen 80;  # This server listens on port 80 (default HTTP port)
+
+    # Define a location block for requests that start with "/api"                     -------> any request starting with /api will be sent to  our node-app, we can also configure for other paths like if there is frontend react application
+    location /api {                                                                  
+        
+        proxy_set_header X-Real-IP $remote_addr;                                       to forward orignal ip address of senders to backend         
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;                  -------> # Set headers to pass client information to the backend server
+
+        # Set the "Host" header to the value of the HTTP host
+        proxy_set_header Host $http_host;
+        
+        # Indicate that the request has been proxied by Nginx
+        proxy_set_header X-NginX-Proxy true;
+        
+        # Define the backend server's address where the requests will be forwarded
+        proxy_pass http://node-app:3000;                                                    ----proxy-------> as our nginx will also be running as a container so it do have access to custom docker network
+        
+        # Disable automatic redirection of the proxy
+        proxy_redirect off;
+    }
+}
+
+
+
+
+when we proxy the request to our express application using nginx, nginx strip off some information like you losse the orignal ip address of the sender, 
+
+we need such things at times say for rate limiting per ip address etc
+
+
+__________________________________________________________________________________________________________________________________
+
+/ Define a route for the root URL
+app.get("/api/v1", (req, res) => {                                    ----------> add /api/v1 as that is where the request is being sent by the ngnix
+  res.send("<h2>Hi There</h2>"); // Send a simple HTML response
+  console.log("yeah it ran");   // Log a message to the console
+});
+
+
+________docker-compose.yml__________________________________________________________________________________________________________________________
+version: "3"
+services:
+  nginx:                                            -------------------> add the nginx service to docker-compose.yml
+    image: nginx:stable-alpine
+    ports:
+      - "3000:80"                                   -------------------> 80 port is where our nginx is listening on where as 3000 is node-app port
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro   -------------> bind mount so as to change the conf when needed(keeping it to read only)
+  node-app:
+    build: .
+    image: bhanumalhotra/node-app
+    environment:
+      - PORT=3000
+    depends_on:
+      - mongo
+
+  mongo:
+    image: mongo
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=sanjeev
+      - MONGO_INITDB_ROOT_PASSWORD=mypassword
+    volumes:
+      - mongo-db:/data/db
+
+  redis:
+    image: redis
+
+volumes:
+  mongo-db:
+
+__________docker-compose.dev.yml________________________________________________________________________________________________________________________
+
+version: "3"
+services:
+  nginx:
+    ports:
+      - "3000:80"
+  node-app:
+    build:
+      context: .
+      args:
+        NODE_ENV: development
+    volumes:
+      - ./:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - MONGO_USER=bhanumalhotra
+      - MONGO_PASSWORD=mypassword
+      - SESSION_SECRET=secret
+
+    command: npm run dev
+  mongo:
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=bhanumalhotra
+      - MONGO_INITDB_ROOT_PASSWORD=mypassword
+_________________________________________________________________________________________________________________________________________________
+
+
+version: "3"
+services:
+  nginx:
+    ports:
+      - "80:80"        ----------------> for prod we link 80 of container to 80 of nginx
+  node-app:
+    build:
+      context: .
+      args:
+        NODE_ENV: production
+
+    environment:
+      - NODE_ENV=production
+      - MONGO_USER=${MONGO_USER}
+      - MONGO_PASSWORD=${MONGO_PASSWORD}
+      - SESSION_SECRET=${SESSION_SECRET}
+    command: node index.js
+  mongo:
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+
+________________________________________________________________________________________________________________________________________________
+
+
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml -up -d
+
+
+
+____________________________________________________________________
+
+now in PRODUCTION we have to setup some config for our express app sitting behind the our nginx
+
+https://expressjs.com/en/guide/behind-proxies.html
+
+why? so that express app trusts headers sent by nginx
+
+
+// Enable trust for proxy headers (for production deployment)
+app.enable("trust proxy");
+
+add this to index.js
+
+__________________________________________________________________
+
+
+NOW I WANT TO ADD SECOND REPLICA!!
+
+
+
+app.get("/api/v1", (req, res) => {
+  res.send("<h2>Hi There</h2>"); // Send a simple HTML response
+  console.log("yeah it ran");   // Log a message to the console      -------------> add this to console.log in index.js so as to catch the request 
+});
+
+
+__________________________________________________________________
+
+
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml -up -d --scale node-app=2
+
+this will launch two node-app containers
+
+
+
+___________________________________________
+
+now  open logs of both the containers 
+
+node-app-1                           node-app-1
+
+yeah it ran         
+                                     yeah it ran
+yeah it ran  
+                                     yeah it ran
+
+
+
+____________________________________________________________________
+  
+enable CORS  allows your front end to run on different host and backend on another
+
+
+CORS Workflow:
+Imagine you have a frontend application hosted on domain https://frontend.example.com and a backend server hosted on https://backend.example.com. When the frontend application wants to make a request to an API endpoint on the backend, CORS comes into play.
+Request Initiation: The frontend JavaScript code sends an HTTP request to the backend API, requesting some data or action.
+Preflight Request (Optional): If the request is considered a "complex" request (e.g., includes certain headers like custom ones or if it's not a simple GET or POST request), the browser might send a preflight OPTIONS request to the backend. This is a lightweight request to ask the server if the actual request is allowed from the given origin.
+Backend Response: The backend receives the request. If the backend's CORS policy allows requests from https://frontend.example.com, it responds with appropriate CORS headers in the HTTP response. For example:
+
+Access-Control-Allow-Origin: https://frontend.example.com
+Access-Control-Allow-Methods: GET, POST, OPTIONS
+Access-Control-Allow-Headers: Content-Type
+These headers tell the browser that the frontend origin is allowed, which methods are permitted, and which headers can be included.
+
+Frontend Handling: The browser, upon seeing the CORS headers, determines whether the frontend has permission to access the data or perform the action. If the frontend origin is allowed, the browser proceeds with the actual request and shares the response data with the frontend JavaScript code.
+Security: The CORS mechanism ensures that only authorized origins are able to access the backend's resources. Unauthorized origins, such as malicious websites, are blocked by the browser, preventing potential security vulnerabilities.
+
+
+https://expressjs.com/en/resources/middleware/cors.html
+
+
+npm install cors
+
+
+you need to rebuild the image as new dependency has been added: cors
+
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+
+(again rememeber if docker-compose is already up and you run it up again, it uses old anonymous volumes so use -V flag)
+
+
+
+const express = require("express");           // Express framework for creating web applications
+const mongoose = require("mongoose");         // Mongoose for working with MongoDB database
+const session = require("express-session");   // Express session for managing user sessions
+const redis = require("redis");               // Redis for caching and data storage
+const cors = require("cors");                 // Cors for handling Cross-Origin Resource Sharing        ----------------> add the cors here
+let RedisStore = require("connect-redis")(session); // Connect Redis with Express session
+
+
+
+
+// Call the function to connect to MongoDB
+connectWithRetry();
+
+// Enable trust for proxy headers (for production deployment)
+app.enable("trust proxy");
+
+// Enable CORS (Cross-Origin Resource Sharing) for handling requests from different origins
+app.use(cors({}));                                                                               ----------> to enable cors add this too
+
+_______________________________________________________________________________________________________________________________________________
+
+
+Good to go to production:
+_________________________
+
+Launch an ubuntu server on aws
+
+
+https://get.docker.com/
+
+
+
+ubuntu@ip-172-31-42-2:~$ ls
+install-docker.sh
+ubuntu@ip-172-31-42-2:~$ sh install-docker.sj
+sh: 0: cannot open install-docker.sj: No such file
+ubuntu@ip-172-31-42-2:~$ sh install-docker.sh
+
+
+
+ubuntu@ip-172-31-42-2:~$ docker --version
+Docker version 24.0.5, build ced0996
+
+
+ubuntu@ip-172-31-42-2:~$ docker-compose -v
+docker-compose version 1.29.2, build unknown
+
+
+________________________________________________________________
+
+creating a git repo for our project.
+
+now create a .gitignore file
+
+we don't need to copy node_modules folder to our git as who ever clones the repo and can use npm install to install all the dependencies
+
+
+vi .gitignore
+node_modules/
+
+
+now push the changes to github
+
+
+
+
+for prod we will give creds as environment variables
+
+
+
+
+
+    environment:
+      - NODE_ENV=production
+      - MONGO_USER=${MONGO_USER}
+      - MONGO_PASSWORD=${MONGO_PASSWORD}
+      - SESSION_SECRET=${SESSION_SECRET}
+    command: node index.js
+  mongo:
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+
+
+
+
+
+
+ubuntu@ip-172-31-42-2:~$ export SESSION_SECRET="hello"
+ubuntu@ip-172-31-42-2:~$ printenv
+
+
+
+but this process is cumbersome(adding 1 env variable at a time and moreover they won't stay after a reboot)
+
+
+
+
+Way out is : create a env file
+
+
+remember to keep these variables away from your code as you don't want them to be ever pushed to git
+
+
+ubuntu@ip-172-31-42-2:~$ sudo su -
+-root@ip-172-31-42-2:~# pwd
+/root
+root@ip-172-31-42-2:~# vi .env
+
+
+NODE_ENV=production
+MONGO_USER=bhanumalhotra
+MONGO_PASSWORD=mypassword
+SESSION_SECRET=secret
+MONGO_INITDB_ROOT_USERNAME=bhanumalhotra
+MONGO_INITDB_ROOT_PASSWORD=mypassword
+
+
+
+root@ip-172-31-42-2:~# pwd
+/root
+root@ip-172-31-42-2:~# ls -la
+total 44
+drwx------  4 root root  4096 Aug 31 08:20 .
+drwxr-xr-x 19 root root  4096 Aug 31 06:40 ..
+-rw-r--r--  1 root root  3106 Oct 15  2021 .bashrc
+-rw-r--r--  1 root root   172 Aug 31 08:20 .env
+-rw-------  1 root root 12288 Aug 31 08:16 .env.swp
+-rw-r--r--  1 root root   161 Jul  9  2019 .profile
+drwx------  2 root root  4096 Aug 31 06:40 .ssh
+-rw-------  1 root root   714 Aug 31 08:20 .viminfo
+drwx------  4 root root  4096 Aug 31 06:41 snap
+
+
+vi .profile
+
+# ~/.profile: executed by Bourne-compatible login shells.
+
+if [ "$BASH" ]; then
+  if [ -f ~/.bashrc ]; then
+    . ~/.bashrc
+  fi
+fi
+
+mesg n 2> /dev/null || true
+
+set -o allexport; source /root/.env; set +o allexport    -----------> add this line (this will add all the environment variables set in .env to the machine)
+~                                                            
+
+restart the machine 
+
+root@ip-172-31-42-2:~# echo $MONGO_INITDB_ROOT_USERNAME
+bhanumalhotra
+
+
+
+you can use other methods too which don't expose your passwords on machine
+
+
+
+root@ip-172-31-42-2:~# printenv
+SHELL=/bin/bash
+MONGO_PASSWORD=mypassword
+PWD=/root
+LOGNAME=root
+MONGO_INITDB_ROOT_PASSWORD=mypassword
+NODE_ENV=production
+MONGO_INITDB_ROOT_USERNAME=bhanumalhotra
+MONGO_USER=bhanumalhotra
+HOME=/root
+LANG=C.UTF-8
+LS_COLORS=rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:
+LESSCLOSE=/usr/bin/lesspipe %s %s
+TERM=xterm-256color
+LESSOPEN=| /usr/bin/lesspipe %s
+USER=root
+SESSION_SECRET=secret
+SHLVL=1
+XDG_DATA_DIRS=/usr/local/share:/usr/share:/var/lib/snapd/desktop
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+MAIL=/var/mail/root
+_=/usr/bin/printenv
+
+
+
+_________________________________________________________________________________
+
+
+
+root@ip-172-31-42-2:~/app# git clone https://github.com/bhanumalhotra101/docker-nodejs-express-mongodb-redis.git .
+Cloning into '.'...
+remote: Enumerating objects: 29, done.
+remote: Counting objects: 100% (29/29), done.
+remote: Compressing objects: 100% (22/22), done.
+remote: Total 29 (delta 2), reused 29 (delta 2), pack-reused 0
+Receiving objects: 100% (29/29), 26.94 KiB | 8.98 MiB/s, done.
+Resolving deltas: 100% (2/2), done.
+
+
+
+root@ip-172-31-42-2:~/app# ls
+Dockerfile   docker-compose.backup.yml  index.js    package-lock.json
+README.md    docker-compose.dev.yml     middleware  package.json
+config       docker-compose.prod.yml    models      routes
+controllers  docker-compose.yml         nginx
+root@ip-172-31-42-2:~/app# 
+
+
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.prod.yml
+
+Done you can test
+
+POST http://34.230.56.94/api/v1/users/signup, it should work
+
+
+
+Now let us try to make change to the source code
+
+
+I changed Hi there to Hi Interviewer, hope you are doing good.
+
+
+Do git pull in your prod server
+
+
+rebuild 
+
+It shows the source code  changes
+
+
+
+but why to check all the containers for rebuilding the changes?
+
+
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d node-app
+
+It still checks for mongo
+
+why?
+because it depends on mongo
+
+
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps node-app
+
+
+WARNING: The following deploy sub-keys are not supported and have been ignored: update_config
+app_node-app_1 is up-to-date
+app_node-app_2 is up-to-date
+app_node-app_3 is up-to-date
+app_node-app_4 is up-to-date
+app_node-app_5 is up-to-date
+app_node-app_6 is up-to-date
+app_node-app_7 is up-to-date
+app_node-app_8 is up-to-date
+
+
+we need to use --force-recreate to rebuild containers even if containers configs are not changed
+
+
+WARNING: The following deploy sub-keys are not supported and have been ignored: update_config
+Recreating app_mongo_1 ... done
+Recreating app_node-app_1 ... 
+Recreating app_node-app_2 ... 
+Recreating app_node-app_3 ... 
+Recreating app_node-app_4 ... 
+Recreating app_node-app_5 ... 
+Recreating app_node-app_6 ... 
+Recreating app_node-app_7 ... 
+
+
+
+but now building images on production is not a great  idea as  it will consume alot resources
+
+
+production server should only be for handling users requests
+
+
+
+________________________________________________________________________________________________________________________________________
+
+
+final production worklow:
+
+
+we build image on dev server > 
+
+build image on dev server -----------> push to dockerhub -----------> Pull node image to production server ----------> rebuild node-container
+
+
+
+need to have a dockerhub account
+
+
+unlimited public repos
+
+
+create a repo named node-app
+
+docker image tag (image id)
+
+docker login
+
+
+docker push (image-name)
+
+
+  node-app:
+    build: . 
+    image: bhanumalhotra/node-app    add this to your node-app service
+
+_______________________________________________________________________________________________________________________
+
+change the source code
+
+1. build the image in dev server for node-app
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker-compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d  
+
+
+2. push the image to dockerhub from dev server
+PS C:\Users\LENOVO\Desktop\nodedocker> docker-compose -f docker-compose.yml -f docker-compose.prod.yml push node-app
+
+
+3.pull the image on prod server
+root@ip-172-31-42-2:~/app# docker-compose -f docker-compose.yml -f docker-compose.prod.yml pull node-app
+WARNING: The following deploy sub-keys are not supported and have been ignored: update_config
+Pulling node-app ... done
+
+
+4. docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps node-app
+
+keep in mind don't update anything other than what is needed in prod.
+
+________________________________________________________________________________________________________________________
+
+
+
+
+watch tower will continously look at dockerhub for new image and if there is new image it will automatically pull it to the prod server and restart that container
+
+
+
+
+
+Not a compulsion can go wrong as it is production, so you should be there at command line if anything goes wrong
+
+special container which handles automation of other containers
+
+
+
+
+docker run -d --name watchtower \
+  -e WATCHTOWER_TRACE=trace \
+  -e WATCH_TOWER_DEBUG=true \
+  -e WATCHTOWER_POLL_INTERVAL=50 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  containrrr/watchtower  node-app-1
+
+
+
+root@ip-172-31-42-2:~/app# docker logs watchtower -f
+time="2023-08-31T11:04:05Z" level=info msg="Watchtower 1.5.3"
+time="2023-08-31T11:04:05Z" level=info msg="Using no notifications"
+time="2023-08-31T11:04:05Z" level=info msg="Only checking containers which name matches \"app_node-app_1\""
+time="2023-08-31T11:04:05Z" level=info msg="Scheduling first run: 2023-08-31 11:04:55 +0000 UTC"
+time="2023-08-31T11:04:05Z" level=info msg="Note that the first check will be performed in 49 seconds"
+
+
+
+
+change the source code
+
+1. build the image in dev server for node-app
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker-compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d  
+
+
+2. push the image to dockerhub from dev server
+PS C:\Users\LENOVO\Desktop\nodedocker> docker-compose -f docker-compose.yml -f docker-compose.prod.yml push node-app
+
+
+
+
+
+For more help on how to use Docker, head to https://docs.docker.com/go/guides/
+
+root@ip-172-31-42-2:~/app# docker logs watchtower -f
+time="2023-08-31T11:04:05Z" level=info msg="Watchtower 1.5.3"
+time="2023-08-31T11:04:05Z" level=info msg="Using no notifications"
+time="2023-08-31T11:04:05Z" level=info msg="Only checking containers which name matches \"app_node-app_1\""
+time="2023-08-31T11:04:05Z" level=info msg="Scheduling first run: 2023-08-31 11:04:55 +0000 UTC"
+time="2023-08-31T11:04:05Z" level=info msg="Note that the first check will be performed in 49 seconds"
+time="2023-08-31T11:04:55Z" level=info msg="Session done" Failed=0 Scanned=1 Updated=0 notify=no
+time="2023-08-31T11:05:45Z" level=info msg="Session done" Failed=0 Scanned=1 Updated=0 notify=no
+time="2023-08-31T11:06:35Z" level=info msg="Found new bhanumalhotra/node-app:latest image (b9e91c7a8bac)"
+
+
+
+
+it even checks for the credentials to docker hub if in case your repository is private (for that do docker login on production service)
+
+
+time="2023-08-31T11:44:55Z" level=info msg="Found new bhanumalhotra/node-app:latest image (576489fa663f)"
+time="2023-08-31T11:44:55Z" level=info msg="Stopping /app_node-app_1 (dbc556ec0ca0) with SIGTERM"
+time="2023-08-31T11:45:06Z" level=info msg="Creating /app_node-app_1"
+time="2023-08-31T11:45:07Z" level=info msg="Session done" Failed=0 Scanned=1 Updated=1 notify=no 
+
+
+
+_____________________________________________________________________________________________________________________________________________
+
+
+either you are using watchtower or recreating tower by yourself, our apps are going to be down for the time being.
+
+
+Can docker-compose be used to hack this?
+
+
+something similar to rolling updates
+
+docker-compose is just a file to write docker run commands at one place
+
+
+DOCKER SWARM       PRODUCTION READY TOOL
+____________
+container orchestator
+ 
+
+
+
+Docker compose is just a simple development tool
+
+
+
+
+
+
+docker swarm already get shipped with docker just not enabled
+
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker swarm init
+Swarm initialized: current node (umdhawfoio5j2ksaf5iwo41yv) is now a manager.
+
+To add a worker to this swarm, run the following command:
+
+    docker swarm join --token SWMTKN-1-2wr1axh845eay4sq6gh6ruses240ra9h4fvpatpavvws63fg8c-d9hwlcq8h1buy40gset0kz2s4 192.168.65.4:2377
+
+To add a manager to this swarm, run 'docker swarm join-token manager' and follow the instructions.
+
+
+
+If you want to add more nodes you can add with the given commands
+
+
+there is alot of similarity between docker and docker-swarm commands
+
+
+
+
+PS C:\Users\LENOVO\Desktop\nodedocker> docker servivce --help
+
+Usage:  docker [OPTIONS] COMMAND
+
+A self-sufficient runtime for containers
+
+Common Commands:
+  run         Create and run a new container from an image
+  exec        Execute a command in a running container
+  ps          List containers
+  build       Build an image from a Dockerfile
+  pull        Download an image from a registry
+  push        Upload an image to a registry
+  images      List images
+  login       Log in to a registry
+  logout      Log out from a registry
+  search      Search Docker Hub for images
+  version     Show the Docker version information
+  info        Display system-wide information
+
+Management Commands:
+  builder     Manage builds
+  buildx*     Docker Buildx (Docker Inc., v0.11.2-desktop.1)
+  compose*    Docker Compose (Docker Inc., v2.20.2-desktop.1)
+  container   Manage containers
+  context     Manage contexts
+  dev*        Docker Dev Environments (Docker Inc., v0.1.0)
+  extension*  Manages Docker extensions (Docker Inc., v0.2.20)
+  image       Manage images
+  init*       Creates Docker-related starter files for your project (Docker Inc., v0.1.0-beta.6)
+  manifest    Manage Docker image manifests and manifest lists
+  network     Manage networks
+  plugin      Manage plugins
+  sbom*       View the packaged-based Software Bill Of Materials (SBOM) for an image (Anchore Inc., 0.6.0)
+  scan*       Docker Scan (Docker Inc., v0.26.0)
+  scout*      Command line tool for Docker Scout (Docker Inc., 0.20.0)
+  system      Manage Docker
+  trust       Manage trust on Docker images
+  volume      Manage volumes
+
+Swarm Commands:
+  config      Manage Swarm configs
+  node        Manage Swarm nodes
+  secret      Manage Swarm secrets
+  service     Manage Swarm services
+  stack       Manage Swarm stacks
+  swarm       Manage Swarm
+
+Commands:
+  attach      Attach local standard input, output, and error streams to a running container
+  commit      Create a new image from a container's changes
+  cp          Copy files/folders between a container and the local filesystem
+  create      Create a new container
+  diff        Inspect changes to files or directories on a container's filesystem
+  events      Get real time events from the server
+  export      Export a container's filesystem as a tar archive
+  history     Show the history of an image
+  import      Import the contents from a tarball to create a filesystem image
+  inspect     Return low-level information on Docker objects
+  kill        Kill one or more running containers
+  load        Load an image from a tar archive or STDIN
+  logs        Fetch the logs of a container
+  pause       Pause all processes within one or more containers
+  port        List port mappings or a specific mapping for the container
+  rename      Rename a container
+  restart     Restart one or more containers
+  rm          Remove one or more containers
+  rmi         Remove one or more images
+  save        Save one or more images to a tar archive (streamed to STDOUT by default)
+  start       Start one or more stopped containers
+  stats       Display a live stream of container(s) resource usage statistics
+  stop        Stop one or more running containers
+  tag         Create a tag TARGET_IMAGE that refers to SOURCE_IMAGE
+  top         Display the running processes of a container
+  unpause     Unpause all processes within one or more containers
+  update      Update configuration of one or more containers
+  wait        Block until one or more containers stop, then print their exit codes
+
+Global Options:
+      --config string      Location of client config files (default
+                           "C:\\Users\\LENOVO\\.docker")
+  -c, --context string     Name of the context to use to connect to the
+                           daemon (overrides DOCKER_HOST env var and
+                           default context set with "docker context use")
+  -D, --debug              Enable debug mode
+  -H, --host list          Daemon socket to connect to
+  -l, --log-level string   Set the logging level ("debug", "info",
+                           "warn", "error", "fatal") (default "info")
+      --tlscacert string   Trust certs signed only by this CA (default
+                           "C:\\Users\\LENOVO\\.docker\\ca.pem")
+      --tlscert string     Path to TLS certificate file (default
+                           "C:\\Users\\LENOVO\\.docker\\cert.pem")
+      --tlskey string      Path to TLS key file (default
+                           "C:\\Users\\LENOVO\\.docker\\key.pem")
+      --tlsverify          Use TLS and verify the remote
+  -v, --version            Print version information and quit
+
+Run 'docker COMMAND --help' for more information on a command.
+
+For more help on how to use Docker, head to https://docs.docker.com/go/guides/
+PS C:\Users\LENOVO\Desktop\nodedocker> docker service --help 
+
+Usage:  docker service COMMAND
+
+Manage Swarm services
+
+Commands:
+  create      Create a new service
+  inspect     Display detailed information on one or more services
+  logs        Fetch the logs of a service or task
+  ls          List services
+  ps          List the tasks of one or more services
+  rm          Remove one or more services
+  rollback    Revert changes to a service's configuration
+  scale       Scale one or multiple replicated services
+  update      Update a service
+
+Run 'docker service COMMAND --help' for more information on a command.
+PS C:\Users\LENOVO\Desktop\nodedocker> 
+
+__________________________________________________________________________________________________________
+
+
+we can use docker-compose files to add the swarm related configs
+
+https://docs.docker.com/compose/compose-file/deploy/
+
+docker-compose.yml 
+
+  node-app:
+    deploy:
+      replicas: 8           ---------------> restart for any reason it goes down
+      restart_policy: 
+        condition: any      ----------------> restart with any change that breaks the container
+      update_config:
+        parallelism: 2      ---------------> updating 2 containers at a time
+        delay: 15s
+
+
+git add
+git commit
+git push
+
+
+git pull on prod server
+
+
+
+root@ip-172-31-42-2:~/app# docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml bhanumalhotra-app
+Ignoring unsupported options: build
+
+Creating network bhanumalhotra-app_default
+Creating service bhanumalhotra-app_mongo
+Creating service bhanumalhotra-app_nginx
+Creating service bhanumalhotra-app_node-app
+Creating service bhanumalhotra-app_redis
+
+
+
+
+
+
+
+root@ip-172-31-42-2:~/app# docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml bhanumalhotra-app
+Ignoring unsupported options: build
+
+Creating network bhanumalhotra-app_default
+Creating service bhanumalhotra-app_mongo
+Creating service bhanumalhotra-app_nginx
+Creating service bhanumalhotra-app_node-app
+Creating service bhanumalhotra-app_redis
+root@ip-172-31-42-2:~/app# docker node ls
+ID                            HOSTNAME         STATUS    AVAILABILITY   MANAGER STATUS   ENGINE VERSION
+p8fpqayq65wjezexwgsqosg4g *   ip-172-31-42-2   Ready     Active         Leader           24.0.5
+root@ip-172-31-42-2:~/app# docker stack ls
+NAME                SERVICES
+bhanumalhotra-app   4
+root@ip-172-31-42-2:~/app# docker stack --help
+
+Usage:  docker stack COMMAND
+
+Manage Swarm stacks
+
+Commands:
+  config      Outputs the final config file, after doing merges and interpolations
+  deploy      Deploy a new stack or update an existing stack
+  ls          List stacks
+  ps          List the tasks in the stack
+  rm          Remove one or more stacks
+  services    List the services in the stack
+
+Run 'docker stack COMMAND --help' for more information on a command.
+root@ip-172-31-42-2:~/app# docker stack service bhanumalhotra-app
+
+Usage:  docker stack COMMAND
+
+Manage Swarm stacks
+
+Commands:
+  config      Outputs the final config file, after doing merges and interpolations
+  deploy      Deploy a new stack or update an existing stack
+  ls          List stacks
+  ps          List the tasks in the stack
+  rm          Remove one or more stacks
+  services    List the services in the stack
+
+Run 'docker stack COMMAND --help' for more information on a command.
+root@ip-172-31-42-2:~/app# docker stack services bhanumalhotra-app
+ID             NAME                         MODE         REPLICAS   IMAGE                           PORTS
+pfinsolgwdff   bhanumalhotra-app_mongo      replicated   1/1        mongo:latest                    
+9iiazzgaya0n   bhanumalhotra-app_nginx      replicated   1/1        nginx:stable-alpine             *:80->80/tcp, *:3000->80/tcp
+q3zyci2y29pn   bhanumalhotra-app_node-app   replicated   4/4        bhanumalhotra/node-app:latest   
+x5onudlp2r2q   bhanumalhotra-app_redis      replicated   1/1        redis:latest                    
+root@ip-172-31-42-2:~/app# docker stack ps --help
+
+Usage:  docker stack ps [OPTIONS] STACK
+
+List the tasks in the stack
+
+Options:
+  -f, --filter filter   Filter output based on conditions provided
+      --format string   Format output using a custom template:
+                        'table':            Print output in table format with column headers
+                        (default)
+                        'table TEMPLATE':   Print output in table format using the given Go template
+                        'json':             Print in JSON format
+                        'TEMPLATE':         Print output using the given Go template.
+                        Refer to https://docs.docker.com/go/formatting/ for more information about
+                        formatting output with templates
+      --no-resolve      Do not map IDs to Names
+      --no-trunc        Do not truncate output
+  -q, --quiet           Only display task IDs
+root@ip-172-31-42-2:~/app# docker stack ps bhanumalhotra-app
+ID             NAME                            IMAGE                           NODE             DESIRED STATE   CURRENT STATE           ERROR                       PORTS
+x14efn77vrq3   bhanumalhotra-app_mongo.1       mongo:latest                    ip-172-31-42-2   Running         Running 9 minutes ago                               
+n1bwz2ua0mkw   bhanumalhotra-app_nginx.1       nginx:stable-alpine             ip-172-31-42-2   Running         Running 9 minutes ago                               
+sm4i2zmwn07z    \_ bhanumalhotra-app_nginx.1   nginx:stable-alpine             ip-172-31-42-2   Shutdown        Failed 9 minutes ago    "task: non-zero exit (1)"   
+7qijhcue1d56   bhanumalhotra-app_node-app.1    bhanumalhotra/node-app:latest   ip-172-31-42-2   Running         Running 9 minutes ago                               
+faaur2nte0wa   bhanumalhotra-app_node-app.2    bhanumalhotra/node-app:latest   ip-172-31-42-2   Running         Running 9 minutes ago                               
+fj1qzrud6n5z   bhanumalhotra-app_node-app.3    bhanumalhotra/node-app:latest   ip-172-31-42-2   Running         Running 9 minutes ago                               
+xx7mih4rq3i1   bhanumalhotra-app_node-app.4    bhanumalhotra/node-app:latest   ip-172-31-42-2   Running         Running 9 minutes ago                               
+dr229qjdn3kn   bhanumalhotra-app_redis.1       redis:latest                    ip-172-31-42-2   Running         Running 9 minutes ago                               
+root@ip-172-31-42-2:~/app# docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml bhanumalhotra-app
+Ignoring unsupported options: build
+
+Updating service bhanumalhotra-app_mongo (id: pfinsolgwdffjoc3jweujps7s)
+Updating service bhanumalhotra-app_nginx (id: 9iiazzgaya0nm89zp54zdivo4)
+Updating service bhanumalhotra-app_node-app (id: q3zyci2y29pn0htn8oiqskryh)
+Updating service bhanumalhotra-app_redis (id: x5onudlp2r2q61owgx9hqtxbb)
+root@ip-172-31-42-2:~/app# docker stack ps bhanumalhotra-app
+ID             NAME                               IMAGE                           NODE             DESIRED STATE   CURRENT STATE            ERROR                       PORTS
+x14efn77vrq3   bhanumalhotra-app_mongo.1          mongo:latest                    ip-172-31-42-2   Running         Running 19 minutes ago                               
+n1bwz2ua0mkw   bhanumalhotra-app_nginx.1          nginx:stable-alpine             ip-172-31-42-2   Running         Running 19 minutes ago                               
+sm4i2zmwn07z    \_ bhanumalhotra-app_nginx.1      nginx:stable-alpine             ip-172-31-42-2   Shutdown        Failed 19 minutes ago    "task: non-zero exit (1)"   
+0uyosoucvah4   bhanumalhotra-app_node-app.1       bhanumalhotra/node-app:latest   ip-172-31-42-2   Ready           Ready 5 seconds ago                                  
+7qijhcue1d56    \_ bhanumalhotra-app_node-app.1   bhanumalhotra/node-app:latest   ip-172-31-42-2   Shutdown        Running 6 seconds ago                                
+k8b75xv5d472   bhanumalhotra-app_node-app.2       bhanumalhotra/node-app:latest   ip-172-31-42-2   Ready           Ready 5 seconds ago                                  
+faaur2nte0wa    \_ bhanumalhotra-app_node-app.2   bhanumalhotra/node-app:latest   ip-172-31-42-2   Shutdown        Running 6 seconds ago                                
+fj1qzrud6n5z   bhanumalhotra-app_node-app.3       bhanumalhotra/node-app:latest   ip-172-31-42-2   Running         Running 19 minutes ago                               
+xx7mih4rq3i1   bhanumalhotra-app_node-app.4       bhanumalhotra/node-app:latest   ip-172-31-42-2   Running         Running 19 minutes ago                               
+dr229qjdn3kn   bhanumalhotra-app_redis.1          redis:latest                    ip-172-31-42-2   Running         Running 19 minutes ago                               
+root@ip-172-31-42-2:~/app# 
+
+Using rollingupdate
+
+change source code
+
+build the image again
+
+push the image
+
+
+root@ip-172-31-42-2:~/app# docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml bhanumalhotra-app
+
+udpates two at a time
