@@ -6,9 +6,10 @@ I have added a file named lessons_learned.txt with all my learnings from this pr
 Project Description:
 
 This project aims to develop an Express.js web application that implements user authentication using MongoDB as the database and Redis for session storage. The primary focus of this project is to learn and practice Docker containerization for both production and development environments, enabling seamless development, testing, and deployment.
+
+
 ![nodedocker-8sourcecodechange (1)](https://github.com/bhanumalhotra123/docker-nodejs-express-mongodb-redis/assets/144083659/84ecf527-4e34-4660-9455-909e86c9f0c3)
 
-![nodedocker-8sourcecodechange](https://github.com/bhanumalhotra123/docker-nodejs-express-mongodb-redis/assets/144083659/9894e34c-4b1c-4b0c-98dd-8c9ba3e5069e)
 
 ![nodedocker-9rolling-update](https://github.com/bhanumalhotra123/docker-nodejs-express-mongodb-redis/assets/144083659/799ad17f-75a1-4d0f-abf4-c6818b0599e8)
 
