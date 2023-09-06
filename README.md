@@ -13,9 +13,8 @@ This project aims to develop an Express.js web application that implements user 
 
 ![nodedocker-2](https://github.com/bhanumalhotra123/docker-nodejs-express-mongodb-redis/assets/144083659/7928496b-cf2a-4b67-ab84-9a0771b41eb9)
 
-![nodedocker-3](https://github.com/bhanumalhotra123/docker-nodejs-express-mongodb-redis/assets/144083659/16efa44e-769b-42a1-b3c7-f10a08d8c4fa)
 
-![nodedocker-9rolling-update](https://github.com/bhanumalhotra123/docker-nodejs-express-mongodb-redis/assets/144083659/799ad17f-75a1-4d0f-abf4-c6818b0599e8)
+
 
 ![nodedocker-7](https://github.com/bhanumalhotra123/docker-nodejs-express-mongodb-redis/assets/144083659/38fe4b92-370f-4434-85b1-5fe41ddf862d)
 
@@ -27,7 +26,7 @@ This project aims to develop an Express.js web application that implements user 
 
 
 
-
+![nodedocker-9rolling-update](https://github.com/bhanumalhotra123/docker-nodejs-express-mongodb-redis/assets/144083659/799ad17f-75a1-4d0f-abf4-c6818b0599e8)
 
 Project Objectives:
 Docker containerization for application and services.
